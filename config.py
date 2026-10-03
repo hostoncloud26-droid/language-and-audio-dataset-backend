@@ -63,15 +63,22 @@ JWT_SECRET_KEY = os.getenv(
 JWT_EXPIRE_MINUTES = int(os.getenv("JWT_EXPIRE_MINUTES", "1440"))
 
 # CORS
-CORS_ORIGINS = [
-    "http://localhost:3000",
-    "http://localhost:5173",
-    "http://localhost:5174",
-    "http://127.0.0.1:3000",
-    "http://127.0.0.1:5173",
-    "http://127.0.0.1:5174",
-    "*",
-]
+cors_env = os.getenv("CORS_ORIGINS", "")
+if cors_env:
+    CORS_ORIGINS = [origin.strip() for origin in cors_env.split(",") if origin.strip()]
+else:
+    CORS_ORIGINS = [
+        "http://syqmo5sq5bozpvjfjjz3dxws.72.61.239.30.sslip.io",
+        "https://syqmo5sq5bozpvjfjjz3dxws.72.61.239.30.sslip.io",
+        "http://localhost:3000",
+        "http://localhost:5173",
+        "http://localhost:5174",
+        "http://localhost:8000",
+        "http://127.0.0.1:3000",
+        "http://127.0.0.1:5173",
+        "http://127.0.0.1:5174",
+        "http://127.0.0.1:8000",
+    ]
 
 # Media directories for uploaded and generated audio
 MEDIA_DIR = BASE_DIR / "media"

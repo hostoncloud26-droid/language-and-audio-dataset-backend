@@ -189,7 +189,8 @@ app = FastAPI(
 # CORS Middleware
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Allow all during development
+    allow_origins=CORS_ORIGINS,
+    allow_origin_regex=r"https?://.*\.sslip\.io.*",
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
