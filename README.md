@@ -4,18 +4,18 @@ High-performance asynchronous backend service built with [FastAPI](https://fasta
 
 ---
 
-## 🌟 Key Highlights
+##  Key Highlights
 
-- **⚡ Fast & Modern**: Built with FastAPI and Uvicorn for asynchronous I/O and low latency.
-- **🗄️ PostgreSQL Database**: Automatic schema creation and connection health status via SQLAlchemy ORM.
-- **☁️ Remote Chibisafe File Server**: Direct multipart audio upload (`POST /api/upload`), album categorization (`POST /api/files/album/add`), and remote audio deletion (`DELETE /api/audio/{id}`).
-- **🎙️ OmniVoice & Neural Speech Synthesis**: Endpoint ready for TTS text-to-speech generation with high-fidelity multi-lingual audio synthesis.
-- **🔐 JWT Authentication**: Token-based security, bcrypt password hashing, and user profile management.
-- **📖 Auto-Generated Documentation**: Interactive Swagger UI (`/docs`) and ReDoc (`/redoc`).
+- ** Fast & Modern**: Built with FastAPI and Uvicorn for asynchronous I/O and low latency.
+- ** PostgreSQL Database**: Automatic schema creation and connection health status via SQLAlchemy ORM.
+- ** Remote Chibisafe File Server**: Direct multipart audio upload (`POST /api/upload`), album categorization (`POST /api/files/album/add`), and remote audio deletion (`DELETE /api/audio/{id}`).
+- ** OmniVoice & Neural Speech Synthesis**: Endpoint ready for TTS text-to-speech generation with high-fidelity multi-lingual audio synthesis.
+- ** JWT Authentication**: Token-based security, bcrypt password hashing, and user profile management.
+- ** Auto-Generated Documentation**: Interactive Swagger UI (`/docs`) and ReDoc (`/redoc`).
 
 ---
 
-## 📁 Repository Structure
+##  Repository Structure
 
 ```
 backend/
@@ -40,7 +40,7 @@ backend/
 
 ---
 
-## ⚙️ Installation & Setup
+##  Installation & Setup
 
 ### 1. Prerequisites
 - Python 3.10 or higher
@@ -94,7 +94,7 @@ JWT_EXPIRE_MINUTES=1440
 
 ---
 
-## 🏃 Running the Backend
+##  Running the Backend
 
 ### Option A: Using the Launcher Script (Recommended)
 This script performs a pre-flight database connection test and outputs interactive URLs:
@@ -109,7 +109,7 @@ uvicorn main:app --host 0.0.0.0 --port 8000 --reload
 
 ---
 
-## 📡 API Endpoints & Documentation
+##  API Endpoints & Documentation
 
 Once the server is running:
 - **Interactive Swagger Documentation**: [http://localhost:8000/docs](http://localhost:8000/docs)
@@ -133,27 +133,4 @@ Once the server is running:
 
 ---
 
-## 🐙 Push to GitHub as a Separate Repository
-
-To publish this backend as its own independent GitHub repository:
-
-```bash
-# 1. Navigate to the backend directory
-cd backend
-
-# 2. Initialize a new Git repository
-git init
-
-# 3. Stage all files (respects .gitignore)
-git add .
-git commit -m "feat: initial backend commit for Language & Audio Dataset Platform"
-
-# 4. Set default branch to main
-git branch -M main
-
-# 5. Connect to your GitHub repository (replace with your repo URL)
-git remote add origin https://github.com/<YOUR_USERNAME>/<YOUR_BACKEND_REPO_NAME>.git
-
-# 6. Push to GitHub
-git push -u origin main
-```
+ 
