@@ -1,0 +1,29 @@
+# Git
+.git/
+.gitignore
+
+# Python cache & virtual environments
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+env/
+venv/
+.venv/
+
+# Environment files with credentials
+.env
+.env.local
+
+# Temporary audio test files
+media/uploads/*
+media/generated/*
+!media/uploads/.gitkeep
+!media/generated/.gitkeep
+
+# IDE & OS files
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
