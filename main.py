@@ -968,6 +968,8 @@ def get_dataset_records(
 
 @app.get("/api/datasets/{dataset_id}/export-zip")
 @app.get("/datasets/{dataset_id}/export-zip")
+@app.get("/api/languages/{language_id}/export-zip")
+@app.get("/languages/{language_id}/export-zip")
 @app.get("/api/records/export-zip")
 @app.get("/records/export-zip")
 def export_dataset_zip(
@@ -1114,7 +1116,17 @@ Exported by Language & Audio Dataset Platform. All rights reserved.
         zip_file.writestr("README.txt", readme_content)
 
     zip_buffer.seek(0)
-    filename = f"dataset_export_{dataset_id or 'all'}_{int(time.time())}.zip"
+    export_prefix = "dataset"
+    if language_id:
+        lang_obj = db.query(Language).filter(Language.id == language_id).first()
+        if lang_obj:
+            export_prefix = lang_obj.name.lower().replace(" ", "_")
+        else:
+            export_prefix = f"language_{language_id}"
+    elif dataset_id and dataset_id != "all":
+        export_prefix = dataset_id.lower().replace(" ", "_")
+
+    filename = f"{export_prefix}_export_{int(time.time())}.zip"
     return StreamingResponse(
         zip_buffer,
         media_type="application/zip",
