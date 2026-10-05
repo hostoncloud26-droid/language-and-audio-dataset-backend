@@ -6,11 +6,20 @@ class LoginRequest(BaseModel):
     username: str
     password: str
 
+class SendOtpRequest(BaseModel):
+    email: str
+
+class SendOtpResponse(BaseModel):
+    success: bool
+    message: str
+    dev_otp: Optional[str] = None
+
 class RegisterRequest(BaseModel):
     username: str
     password: str
     name: Optional[str] = None
     role: Optional[str] = "Dataset Specialist"
+    otp: Optional[str] = None
 
 class UserResponse(BaseModel):
     id: str

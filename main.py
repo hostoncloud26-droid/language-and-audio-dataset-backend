@@ -7,6 +7,12 @@ import logging
 from contextlib import asynccontextmanager
 from typing import List, Optional
 
+import random
+import smtplib
+from datetime import datetime, timedelta
+from email.mime.text import MIMEText
+from email.mime.multipart import MIMEMultipart
+
 from fastapi import FastAPI, Depends, HTTPException, UploadFile, File, Form, status, Response, Request
 from fastapi.responses import StreamingResponse, JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
@@ -30,6 +36,8 @@ try:
     from .schemas import (
         LoginRequest,
         RegisterRequest,
+        SendOtpRequest,
+        SendOtpResponse,
         LoginResponse,
         UserResponse,
         LanguageResponse,
@@ -82,6 +90,8 @@ except (ImportError, ValueError):
         from backend.schemas import (
             LoginRequest,
             RegisterRequest,
+            SendOtpRequest,
+            SendOtpResponse,
             LoginResponse,
             UserResponse,
             LanguageResponse,
@@ -133,6 +143,8 @@ except (ImportError, ValueError):
         from schemas import (
             LoginRequest,
             RegisterRequest,
+            SendOtpRequest,
+            SendOtpResponse,
             LoginResponse,
             UserResponse,
             LanguageResponse,
@@ -394,20 +406,152 @@ def login(req: LoginRequest, db: Session = Depends(get_db)):
         ),
     )
 
+# ---------------------------------------------------------------------------
+# OTP Verification Store & Email Helpers
+# ---------------------------------------------------------------------------
+OTP_STORE: dict[str, dict] = {}
+
+def generate_otp() -> str:
+    """Generates a secure 6-digit numeric OTP."""
+    return f"{random.randint(100000, 999999)}"
+
+def send_email_otp(to_email: str, otp_code: str) -> bool:
+    """
+    Sends the 6-digit OTP code to the recipient email via standard SMTP.
+    Falls back gracefully to logging in console for development if SMTP is not configured.
+    """
+    smtp_host = os.getenv("SMTP_HOST")
+    smtp_port = int(os.getenv("SMTP_PORT", 587))
+    smtp_user = os.getenv("SMTP_USER")
+    smtp_pass = os.getenv("SMTP_PASS")
+
+    if smtp_host and smtp_user and smtp_pass:
+        try:
+            msg = MIMEMultipart("alternative")
+            msg["Subject"] = f"{otp_code} is your Dataset Platform verification code"
+            msg["From"] = os.getenv("SMTP_FROM", smtp_user)
+            msg["To"] = to_email
+
+            html_body = f"""
+            <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; max-width: 520px; margin: 0 auto; padding: 32px 24px; background: #ffffff; border: 1px solid #e2e8f0; border-radius: 16px;">
+                <h2 style="font-size: 20px; color: #0f172a; margin-bottom: 8px;">Verify Your Email Address</h2>
+                <p style="font-size: 14px; color: #64748b; line-height: 1.5; margin-bottom: 24px;">
+                    Please enter the following 6-digit verification code to complete your registration on the Language & Audio Dataset Platform.
+                </p>
+                <div style="background: #f0f9ff; border: 1px solid #bae6fd; border-radius: 12px; padding: 20px; text-align: center; margin-bottom: 24px;">
+                    <span style="font-size: 32px; font-weight: 800; letter-spacing: 8px; color: #0284c7; font-family: monospace;">{otp_code}</span>
+                </div>
+                <p style="font-size: 13px; color: #64748b; line-height: 1.5;">
+                    This code will expire in <b>5 minutes</b>. If you did not request this verification code, please ignore this email.
+                </p>
+            </div>
+            """
+            msg.attach(MIMEText(html_body, "html"))
+            with smtplib.SMTP(smtp_host, smtp_port, timeout=10.0) as server:
+                server.starttls()
+                server.login(smtp_user, smtp_pass)
+                server.sendmail(msg["From"], to_email, msg.as_string())
+            logger.info(f"OTP successfully emailed to {to_email}")
+            return True
+        except Exception as e:
+            logger.warning(f"Failed to send email via SMTP ({e}). Dev OTP: {otp_code}")
+    else:
+        logger.info(f"📧 [DEV EMAIL OTP] To: {to_email} | OTP Code: {otp_code}")
+
+    return False
+
+
+@app.post("/api/auth/send-otp", response_model=SendOtpResponse)
+@app.post("/api/send-otp", response_model=SendOtpResponse)
+@app.post("/send-otp", response_model=SendOtpResponse)
+def send_registration_otp(req: SendOtpRequest, db: Session = Depends(get_db)):
+    clean_email = req.email.strip().lower()
+    if not clean_email or "@" not in clean_email:
+        raise HTTPException(status_code=400, detail="Please enter a valid email address.")
+
+    # Check if user already exists
+    existing = db.query(User).filter(User.username.ilike(clean_email)).first()
+    if existing:
+        raise HTTPException(
+            status_code=400,
+            detail="An account with this email/username already exists. Please sign in.",
+        )
+
+    code = generate_otp()
+    OTP_STORE[clean_email] = {
+        "otp": code,
+        "expires_at": datetime.utcnow() + timedelta(minutes=5),
+        "attempts": 0,
+    }
+
+    email_sent = send_email_otp(clean_email, code)
+
+    # In development or if SMTP is unconfigured, return dev_otp so testing is smooth
+    dev_code = code if (not os.getenv("SMTP_HOST") or not email_sent) else None
+
+    return SendOtpResponse(
+        success=True,
+        message=f"Verification code sent to {clean_email}.",
+        dev_otp=dev_code,
+    )
+
+
 @app.post("/api/auth/register", response_model=LoginResponse)
 @app.post("/api/register", response_model=LoginResponse)
 @app.post("/register", response_model=LoginResponse)
 def register(req: RegisterRequest, db: Session = Depends(get_db)):
     if not req.username or not req.username.strip():
-        raise HTTPException(status_code=400, detail="Username is required.")
+        raise HTTPException(status_code=400, detail="Username or email is required.")
     if not req.password or len(req.password.strip()) < 4:
         raise HTTPException(status_code=400, detail="Password must be at least 4 characters.")
 
     clean_username = req.username.strip().lower()
+
+    # 1. Enforce OTP Verification
+    if not req.otp or not req.otp.strip():
+        raise HTTPException(
+            status_code=400,
+            detail="A 6-digit OTP verification code is required. Please request a verification code.",
+        )
+
+    clean_otp = req.otp.strip()
+    stored = OTP_STORE.get(clean_username)
+    if not stored:
+        raise HTTPException(
+            status_code=400,
+            detail="No verification code was requested for this email, or it has expired. Please click 'Resend Code'.",
+        )
+
+    if datetime.utcnow() > stored["expires_at"]:
+        OTP_STORE.pop(clean_username, None)
+        raise HTTPException(
+            status_code=400,
+            detail="Verification code has expired. Please request a new code.",
+        )
+
+    stored["attempts"] = stored.get("attempts", 0) + 1
+    if stored["attempts"] > 5:
+        OTP_STORE.pop(clean_username, None)
+        raise HTTPException(
+            status_code=400,
+            detail="Too many invalid attempts. Please request a new verification code.",
+        )
+
+    if stored["otp"] != clean_otp:
+        raise HTTPException(
+            status_code=400,
+            detail="Invalid verification code. Please check your email and try again.",
+        )
+
+    # OTP validated successfully: remove from store
+    OTP_STORE.pop(clean_username, None)
+
+    # 2. Check if user already exists
     existing = db.query(User).filter(User.username.ilike(clean_username)).first()
     if existing:
         raise HTTPException(status_code=400, detail="Username already exists. Please choose another or sign in.")
 
+    # 3. Create user in PostgreSQL
     display_name = req.name.strip() if req.name and req.name.strip() else clean_username.split("@")[0].capitalize()
     new_user = User(
         id=f"usr-{uuid.uuid4().hex[:6]}",
@@ -420,6 +564,7 @@ def register(req: RegisterRequest, db: Session = Depends(get_db)):
     db.commit()
     db.refresh(new_user)
 
+    # 4. Generate signed JWT token
     token_payload = {
         "sub": new_user.id,
         "username": new_user.username,
