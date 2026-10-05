@@ -70,6 +70,8 @@ else:
     CORS_ORIGINS = [
         "http://syqmo5sq5bozpvjfjjz3dxws.72.61.239.30.sslip.io",
         "https://syqmo5sq5bozpvjfjjz3dxws.72.61.239.30.sslip.io",
+        "http://sygmo5sq5bozpvjfijz3dxws.72.61.239.30.sslip.io",
+        "https://sygmo5sq5bozpvjfijz3dxws.72.61.239.30.sslip.io",
         "http://localhost:3000",
         "http://localhost:5173",
         "http://localhost:5174",
