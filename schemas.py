@@ -12,7 +12,6 @@ class SendOtpRequest(BaseModel):
 class SendOtpResponse(BaseModel):
     success: bool
     message: str
-    dev_otp: Optional[str] = None
 
 class RegisterRequest(BaseModel):
     username: str

@@ -9,6 +9,7 @@ from typing import List, Optional
 
 import random
 import smtplib
+import email.utils
 from datetime import datetime, timedelta
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
@@ -415,50 +416,127 @@ def generate_otp() -> str:
     """Generates a secure 6-digit numeric OTP."""
     return f"{random.randint(100000, 999999)}"
 
-def send_email_otp(to_email: str, otp_code: str) -> bool:
+def send_email_otp(to_email: str, otp_code: str) -> tuple[bool, str]:
     """
-    Sends the 6-digit OTP code to the recipient email via standard SMTP.
-    Falls back gracefully to logging in console for development if SMTP is not configured.
+    Sends the 6-digit OTP code to the recipient email via standard SMTP (STARTTLS / SSL).
+    Returns (True, "OK") on success or (False, error_message) on failure.
     """
     smtp_host = os.getenv("SMTP_HOST")
-    smtp_port = int(os.getenv("SMTP_PORT", 587))
+    smtp_port_raw = os.getenv("SMTP_PORT", "587")
     smtp_user = os.getenv("SMTP_USER")
     smtp_pass = os.getenv("SMTP_PASS")
+    smtp_from = os.getenv("SMTP_FROM") or smtp_user or "noreply@datasetplatform.com"
 
-    if smtp_host and smtp_user and smtp_pass:
-        try:
-            msg = MIMEMultipart("alternative")
-            msg["Subject"] = f"{otp_code} is your Dataset Platform verification code"
-            msg["From"] = os.getenv("SMTP_FROM", smtp_user)
-            msg["To"] = to_email
+    if not smtp_host or not smtp_user or not smtp_pass:
+        return (
+            False,
+            "SMTP server credentials are not configured in backend/.env (missing SMTP_HOST, SMTP_USER, or SMTP_PASS)",
+        )
 
-            html_body = f"""
-            <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; max-width: 520px; margin: 0 auto; padding: 32px 24px; background: #ffffff; border: 1px solid #e2e8f0; border-radius: 16px;">
-                <h2 style="font-size: 20px; color: #0f172a; margin-bottom: 8px;">Verify Your Email Address</h2>
-                <p style="font-size: 14px; color: #64748b; line-height: 1.5; margin-bottom: 24px;">
-                    Please enter the following 6-digit verification code to complete your registration on the Language & Audio Dataset Platform.
-                </p>
-                <div style="background: #f0f9ff; border: 1px solid #bae6fd; border-radius: 12px; padding: 20px; text-align: center; margin-bottom: 24px;">
-                    <span style="font-size: 32px; font-weight: 800; letter-spacing: 8px; color: #0284c7; font-family: monospace;">{otp_code}</span>
-                </div>
-                <p style="font-size: 13px; color: #64748b; line-height: 1.5;">
-                    This code will expire in <b>5 minutes</b>. If you did not request this verification code, please ignore this email.
-                </p>
-            </div>
-            """
-            msg.attach(MIMEText(html_body, "html"))
-            with smtplib.SMTP(smtp_host, smtp_port, timeout=10.0) as server:
-                server.starttls()
+    try:
+        smtp_port = int(smtp_port_raw)
+    except ValueError:
+        smtp_port = 587
+
+    try:
+        msg = MIMEMultipart("alternative")
+        msg["Subject"] = f"{otp_code} is your Dataset Platform verification code"
+        msg["From"] = smtp_from
+        msg["To"] = to_email
+        msg["Date"] = email.utils.formatdate(localtime=True)
+        msg["Message-ID"] = email.utils.make_msgid(domain="datasetplatform.com")
+
+        text_body = f"""Hello,
+
+Your verification code for Dataset Platform is: {otp_code}
+
+This code will expire in 5 minutes.
+If you did not request this verification code, please ignore this email.
+
+Best regards,
+Language & Audio Dataset Platform Team
+"""
+        html_body = f"""<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Verification Code</title>
+</head>
+<body style="margin: 0; padding: 0; background-color: #f1f5f9; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;">
+  <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="background-color: #f1f5f9; padding: 40px 15px;">
+    <tr>
+      <td align="center">
+        <table role="presentation" width="100%" style="max-width: 520px; background-color: #ffffff; border-radius: 16px; border: 1px solid #e2e8f0; overflow: hidden; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);">
+          <!-- Header Banner -->
+          <tr>
+            <td style="background: linear-gradient(135deg, #0284c7 0%, #2563eb 100%); padding: 32px 30px; text-align: center;">
+              <h1 style="margin: 0; color: #ffffff; font-size: 24px; font-weight: 800; letter-spacing: -0.5px;">Dataset Platform</h1>
+              <p style="margin: 6px 0 0; color: #bae6fd; font-size: 13px; font-weight: 500; text-transform: uppercase; letter-spacing: 1px;">Acoustic Intelligence & Speech Data</p>
+            </td>
+          </tr>
+          
+          <!-- Content Body -->
+          <tr>
+            <td style="padding: 36px 32px 28px;">
+              <h2 style="margin: 0 0 12px; color: #0f172a; font-size: 20px; font-weight: 700;">Verify Your Email Address</h2>
+              <p style="margin: 0 0 24px; color: #475569; font-size: 15px; line-height: 1.6;">
+                Thank you for creating an account. Please use the following 6-digit one-time verification code to authenticate your registration:
+              </p>
+              
+              <!-- OTP Display Box -->
+              <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="margin: 0 0 24px;">
+                <tr>
+                  <td align="center" style="background-color: #f8fafc; border: 2px dashed #0284c7; border-radius: 12px; padding: 22px;">
+                    <span style="font-family: 'Courier New', Courier, monospace, monospace; font-size: 38px; font-weight: 800; letter-spacing: 10px; color: #0284c7; display: block; margin-left: 10px;">{otp_code}</span>
+                  </td>
+                </tr>
+              </table>
+
+              <p style="margin: 0 0 8px; color: #64748b; font-size: 13px; line-height: 1.5;">
+                ⏱️ <strong>This code expires in 5 minutes.</strong>
+              </p>
+              <p style="margin: 0; color: #94a3b8; font-size: 13px; line-height: 1.5;">
+                If you did not request this registration code, you can safely ignore this email. No changes will be made to your account.
+              </p>
+            </td>
+          </tr>
+
+          <!-- Footer -->
+          <tr>
+            <td style="background-color: #f8fafc; border-top: 1px solid #e2e8f0; padding: 20px 32px; text-align: center;">
+              <p style="margin: 0; color: #94a3b8; font-size: 12px; line-height: 1.4;">
+                &copy; {datetime.utcnow().year} Language & Audio Dataset Platform. All rights reserved.
+              </p>
+            </td>
+          </tr>
+        </table>
+      </td>
+    </tr>
+  </table>
+</body>
+</html>
+"""
+        msg.attach(MIMEText(text_body, "plain", "utf-8"))
+        msg.attach(MIMEText(html_body, "html", "utf-8"))
+
+        if smtp_port == 465:
+            with smtplib.SMTP_SSL(smtp_host, smtp_port, timeout=12.0) as server:
                 server.login(smtp_user, smtp_pass)
-                server.sendmail(msg["From"], to_email, msg.as_string())
-            logger.info(f"OTP successfully emailed to {to_email}")
-            return True
-        except Exception as e:
-            logger.warning(f"Failed to send email via SMTP ({e}). Dev OTP: {otp_code}")
-    else:
-        logger.info(f"📧 [DEV EMAIL OTP] To: {to_email} | OTP Code: {otp_code}")
+                server.sendmail(msg["From"], [to_email], msg.as_string())
+        else:
+            with smtplib.SMTP(smtp_host, smtp_port, timeout=12.0) as server:
+                server.ehlo()
+                server.starttls()
+                server.ehlo()
+                server.login(smtp_user, smtp_pass)
+                server.sendmail(msg["From"], [to_email], msg.as_string())
 
-    return False
+        logger.info(f"OTP successfully emailed to {to_email} via {smtp_host}:{smtp_port}")
+        return True, "Email dispatched successfully"
+    except Exception as e:
+        logger.error(f"SMTP email dispatch error for {to_email}: {e}")
+        return False, str(e)
 
 
 @app.post("/api/auth/send-otp", response_model=SendOtpResponse)
@@ -466,7 +544,7 @@ def send_email_otp(to_email: str, otp_code: str) -> bool:
 @app.post("/send-otp", response_model=SendOtpResponse)
 def send_registration_otp(req: SendOtpRequest, db: Session = Depends(get_db)):
     clean_email = req.email.strip().lower()
-    if not clean_email or "@" not in clean_email:
+    if not clean_email or "@" not in clean_email or "." not in clean_email:
         raise HTTPException(status_code=400, detail="Please enter a valid email address.")
 
     # Check if user already exists
@@ -478,21 +556,24 @@ def send_registration_otp(req: SendOtpRequest, db: Session = Depends(get_db)):
         )
 
     code = generate_otp()
+    email_sent, err_msg = send_email_otp(clean_email, code)
+    if not email_sent:
+        logger.error(f"Failed to send email to {clean_email}: {err_msg}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Unable to send verification email: {err_msg}. Please ensure SMTP settings are properly configured.",
+        )
+
+    # Store OTP only after successful email dispatch
     OTP_STORE[clean_email] = {
         "otp": code,
         "expires_at": datetime.utcnow() + timedelta(minutes=5),
         "attempts": 0,
     }
 
-    email_sent = send_email_otp(clean_email, code)
-
-    # In development or if SMTP is unconfigured, return dev_otp so testing is smooth
-    dev_code = code if (not os.getenv("SMTP_HOST") or not email_sent) else None
-
     return SendOtpResponse(
         success=True,
-        message=f"Verification code sent to {clean_email}.",
-        dev_otp=dev_code,
+        message=f"Verification code sent to {clean_email}. Please check your inbox.",
     )
 
 
