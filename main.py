@@ -425,7 +425,11 @@ def send_email_otp(to_email: str, otp_code: str) -> tuple[bool, str]:
     smtp_port_raw = os.getenv("SMTP_PORT", "587")
     smtp_user = os.getenv("SMTP_USER")
     smtp_pass = os.getenv("SMTP_PASS")
-    smtp_from = os.getenv("SMTP_FROM") or smtp_user or "noreply@datasetplatform.com"
+    raw_from = os.getenv("SMTP_FROM", "").strip()
+    if not raw_from or "noreply@datasetplatform.com" in raw_from:
+        smtp_from = f"Dataset Platform <{smtp_user}>"
+    else:
+        smtp_from = raw_from
 
     if not smtp_host or not smtp_user or not smtp_pass:
         return (
