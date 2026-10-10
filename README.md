@@ -63,34 +63,6 @@ source venv/bin/activate
 pip install -r requirements.txt
 ```
 
-### 4. Configure Environment Variables
-Copy `.env.example` to `.env`:
-```bash
-cp .env.example .env
-```
-
-Configure your credentials inside `.env`:
-```env
-# Server Network Configuration
-HOST=0.0.0.0
-FASTAPI_PORT=8000
-DEBUG=True
-
-# PostgreSQL Database Connection
-DATABASE_URL=postgresql://postgres:<YOUR_PASSWORD>@72.61.239.30:8909/postgres
-
-# Remote Storage Server (Chibisafe) Configuration
-CHIBISAFE_URL=http://chibisafe-js70kfifmck6m9b4lzbe5hko.72.61.239.30.sslip.io
-CHIBISAFE_API_KEY=<YOUR_CHIBISAFE_API_KEY>
-CHIBISAFE_ALBUM_UUID=63219c42-774f-4eae-8448-7e75d446a63a
-
-# Remote Voice Generation Server (OmniVoice) Configuration
-OMNIVOICE_URL=http://47.29.133.221:32149
-
-# JWT Security
-JWT_SECRET_KEY=vdf-dataset-platform-super-secure-jwt-key-2026-xyz-32bytes!
-JWT_EXPIRE_MINUTES=1440
-```
 
 ---
 
