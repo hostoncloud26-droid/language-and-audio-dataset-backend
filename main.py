@@ -1249,8 +1249,8 @@ async def stream_remote_audio(file_uuid: str):
 @app.post("/audio/generate", response_model=AudioGenerateResponse)
 async def generate_audio(payload: AudioGenerateRequest):
     """
-    Generates speech via OmniVoice API (or resilient synthesizer fallback)
-    and uploads the generated audio clip directly to the Chibisafe remote server.
+    Generates natural human speech via Microsoft Edge Neural TTS
+    and uploads the generated audio clip to the Chibisafe server.
     """
     if not payload.text or not payload.text.strip():
         raise HTTPException(status_code=400, detail="Text is required for audio generation.")
@@ -1258,36 +1258,44 @@ async def generate_audio(payload: AudioGenerateRequest):
     lang_id = int(payload.language_id) if str(payload.language_id).isdigit() else 1
     lang_name = payload.language_name or "English"
 
-    result = await synthesize_and_upload_audio(
-        text=payload.text,
-        language_id=lang_id,
-        language_name=lang_name,
-        lang_code=payload.lang_code,
-        ref_audio=payload.ref_audio or "reference.mp3",
-        upload_to_server=True,
-    )
+    try:
+        result = await synthesize_and_upload_audio(
+            text=payload.text,
+            language_id=lang_id,
+            language_name=lang_name,
+            lang_code=payload.lang_code,
+            ref_audio=payload.ref_audio or "reference.mp3",
+            upload_to_server=True,
+        )
 
-    return AudioGenerateResponse(
-        audio_url=result["audio_url"],
-        filename=result["filename"],
-        duration=result["duration"],
-        engine=result.get("engine"),
-        lang_code=result.get("lang_code"),
-    )
+        return AudioGenerateResponse(
+            audio_url=result["audio_url"],
+            filename=result["filename"],
+            duration=result["duration"],
+            engine=result.get("engine", "edge_tts"),
+            lang_code=result.get("lang_code"),
+        )
+    except Exception as e:
+        logger.error(f"Edge-TTS speech generation error: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=500,
+            detail=f"Edge-TTS synthesis error: {str(e)}"
+        )
 
 # ---------------------------------------------------------------------------
 # Remote Services Status & Health Check Endpoints
 # ---------------------------------------------------------------------------
 @app.get("/api/system-info")
+@app.get("/api/audio/tts/status")
+@app.get("/api/audio/edge-tts/status")
 @app.get("/api/audio/omnivoice/status")
 @app.get("/api/omnivoice/status")
 @app.get("/api/omnivoice/health")
-async def get_omnivoice_status():
+async def get_tts_engine_status():
     """
-    OmniVoice health check endpoint (mirrors curl -i $BASE/api/system-info).
+    Edge-TTS health and voice capability status endpoint.
     """
-    status_info = await check_omnivoice_health(timeout=3.0)
-    return status_info
+    return await check_omnivoice_health(timeout=3.0)
 
 @app.get("/api/chibisafe/status")
 async def get_remote_chibisafe_status():
@@ -1299,13 +1307,14 @@ async def get_remote_chibisafe_status():
 @app.get("/api/external/status")
 async def get_all_external_status():
     """
-    Aggregated health check of both integrated external services:
-    Chibisafe (file upload/storage) and OmniVoice (voice generation).
+    Aggregated health check of integrated external services:
+    Chibisafe (file upload/storage) and Edge-TTS (voice generation).
     """
     chibi = await get_chibisafe_status()
-    omni = await check_omnivoice_health(timeout=3.0)
+    tts_status = await check_omnivoice_health(timeout=3.0)
     return {
         "chibisafe": chibi,
-        "omnivoice": omni,
+        "edge_tts": tts_status,
+        "omnivoice": tts_status,
     }
 
