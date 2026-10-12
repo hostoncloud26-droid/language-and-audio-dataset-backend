@@ -54,13 +54,6 @@ def seed_initial_data():
         # 2. Seed Default Secure Users with Bcrypt Hashed Passwords
         default_users = [
             {
-                "id": "usr-janu-01",
-                "username": "janu09@gmail.com",
-                "password": "password123",
-                "name": "Janu S",
-                "role": "Dataset Specialist",
-            },
-            {
                 "id": "usr-admin-01",
                 "username": "admin",
                 "password": "admin123",
@@ -68,17 +61,17 @@ def seed_initial_data():
                 "role": "Administrator",
             },
             {
+                "id": "usr-janu-01",
+                "username": "janu09@gmail.com",
+                "password": "password123",
+                "name": "Janu S",
+                "role": "Dataset Specialist",
+            },
+            {
                 "id": "usr-specialist-01",
                 "username": "specialist",
                 "password": "DatasetUser@2026!",
                 "name": "Dataset Specialist",
-                "role": "Dataset Specialist",
-            },
-            {
-                "id": "usr-demo-01",
-                "username": "demo",
-                "password": "demo123",
-                "name": "Demo Specialist",
                 "role": "Dataset Specialist",
             },
         ]
@@ -146,6 +139,8 @@ def seed_initial_data():
                     language_id=1,
                     language_name="English",
                     duration=rec1_audio["duration"],
+                    user_id="usr-admin-01",
+                    uploaded_by="System Administrator",
                     created_at=datetime.utcnow(),
                 ),
                 DatasetRecord(
@@ -156,6 +151,8 @@ def seed_initial_data():
                     language_id=2,
                     language_name="Tamil",
                     duration=rec2_audio["duration"],
+                    user_id="usr-admin-01",
+                    uploaded_by="System Administrator",
                     created_at=datetime.utcnow(),
                 ),
                 DatasetRecord(
@@ -166,6 +163,8 @@ def seed_initial_data():
                     language_id=3,
                     language_name="Hindi",
                     duration=rec3_audio["duration"],
+                    user_id="usr-admin-01",
+                    uploaded_by="System Administrator",
                     created_at=datetime.utcnow(),
                 ),
             ]

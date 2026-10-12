@@ -57,8 +57,11 @@ class DatasetRecord(Base):
     language_id = Column(Integer, ForeignKey("languages.id"), nullable=False, index=True)
     language_name = Column(String(128), nullable=True)
     duration = Column(Float, default=0.0)
+    user_id = Column(String(64), ForeignKey("users.id"), nullable=True, index=True)
+    uploaded_by = Column(String(128), nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
 
     # Relationships
     dataset = relationship("Dataset", back_populates="records")
     language = relationship("Language", back_populates="records")
+    user = relationship("User", backref="uploaded_records")

@@ -60,6 +60,7 @@ try:
         AudioGenerateResponse,
         DbStatusResponse,
         SuccessResponse,
+        ContributorStats,
     )
     from .security import (
         hash_password,
@@ -114,6 +115,7 @@ except (ImportError, ValueError):
             AudioGenerateResponse,
             DbStatusResponse,
             SuccessResponse,
+            ContributorStats,
         )
         from backend.security import (
             hash_password,
@@ -167,6 +169,7 @@ except (ImportError, ValueError):
             AudioGenerateResponse,
             DbStatusResponse,
             SuccessResponse,
+            ContributorStats,
         )
         from security import (
             hash_password,
@@ -354,7 +357,8 @@ def configure_db_url(payload: DbConfigureRequest):
 
 
 # ---------------------------------------------------------------------------
-# Secure Authentication Endpoints
+# ---------------------------------------------------------------------------
+# Secure Authentication Endpoints: Contributor & Dedicated Administrator
 # ---------------------------------------------------------------------------
 @app.post("/api/login", response_model=LoginResponse)
 @app.post("/api/auth/login", response_model=LoginResponse)
@@ -379,14 +383,14 @@ def login(req: LoginRequest, db: Session = Depends(get_db)):
                 detail="Invalid username or password.",
             )
     else:
-        # Auto-provision user in PostgreSQL if first login with valid password
+        # Auto-provision user as standard Contributor if first login with valid password
         display_name = clean_username.split("@")[0].capitalize()
         user = User(
             id=f"usr-{uuid.uuid4().hex[:6]}",
             username=clean_username,
             password=hash_password(req.password),
             name=display_name,
-            role="Dataset Specialist",
+            role="Dataset Contributor",
         )
         db.add(user)
         db.commit()
@@ -411,14 +415,62 @@ def login(req: LoginRequest, db: Session = Depends(get_db)):
         ),
     )
 
+@app.post("/api/auth/admin-login", response_model=LoginResponse)
+@app.post("/api/admin/login", response_model=LoginResponse)
+@app.post("/admin/login", response_model=LoginResponse)
+def admin_login(req: LoginRequest, db: Session = Depends(get_db)):
+    """
+    Dedicated Administrator Login Portal.
+    Strictly verifies credentials and enforces Administrator security clearance.
+    """
+    if not req.username or not req.password:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Administrator username and password are required.",
+        )
+
+    clean_username = req.username.strip().lower()
+    user = db.query(User).filter(User.username.ilike(clean_username)).first()
+
+    if not user or not verify_password(req.password, user.password):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid administrator credentials.",
+        )
+
+    # Strict check: only users with Administrator role are allowed through admin login
+    if user.role != "Administrator":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Access Denied: Administrative privileges required. Please use the standard Contributor login.",
+        )
+
+    token_payload = {
+        "sub": user.id,
+        "username": user.username,
+        "name": user.name,
+        "role": user.role,
+    }
+    jwt_token = create_access_token(token_payload)
+
+    return LoginResponse(
+        token=jwt_token,
+        user=UserResponse(
+            id=user.id,
+            username=user.username,
+            name=user.name,
+            role=user.role,
+        ),
+    )
+
 # ---------------------------------------------------------------------------
-# User Registration (Direct Account Creation)
+# User Registration (Direct Account Creation as Contributor)
 # ---------------------------------------------------------------------------
 @app.post("/api/auth/send-otp", response_model=SendOtpResponse)
 @app.post("/api/send-otp", response_model=SendOtpResponse)
 @app.post("/send-otp", response_model=SendOtpResponse)
 def send_registration_otp(req: SendOtpRequest, db: Session = Depends(get_db)):
-    """OTP concept removed: provides backward-compatible success response."""
+    """Direct registration is active."""
     return SendOtpResponse(
         success=True,
         message="Direct registration is active.",
@@ -441,20 +493,21 @@ def register(req: RegisterRequest, db: Session = Depends(get_db)):
     if existing:
         raise HTTPException(status_code=400, detail="An account with this email/username already exists. Please choose another or sign in.")
 
-    # Create user in PostgreSQL
+    # Always assign regular Contributor role on self-registration; never allow client to assign Administrator
+    assigned_role = "Dataset Contributor"
     display_name = req.name.strip() if req.name and req.name.strip() else clean_username.split("@")[0].capitalize()
     new_user = User(
         id=f"usr-{uuid.uuid4().hex[:6]}",
         username=clean_username,
         password=hash_password(req.password.strip()),
         name=display_name,
-        role=req.role or "Dataset Specialist",
+        role=assigned_role,
     )
     db.add(new_user)
     db.commit()
     db.refresh(new_user)
 
-    # 4. Generate signed JWT token
+    # Generate signed JWT token
     token_payload = {
         "sub": new_user.id,
         "username": new_user.username,
@@ -677,6 +730,8 @@ def get_dataset_by_id(dataset_id: str, db: Session = Depends(get_db)):
             language_id=r.language_id,
             language_name=r.language_name or (r.language.name if r.language else "English"),
             duration=r.duration,
+            user_id=r.user_id,
+            uploaded_by=r.uploaded_by,
             created_at=r.created_at.isoformat() if r.created_at else "",
         )
         for r in records
@@ -700,6 +755,8 @@ def get_dataset_by_id(dataset_id: str, db: Session = Depends(get_db)):
 def get_dataset_records(
     dataset_id: Optional[str] = None,
     language_id: Optional[int] = None,
+    contributor_id: Optional[str] = None,
+    current_user: Optional[dict] = Depends(get_current_user_optional),
     db: Session = Depends(get_db),
 ):
     try:
@@ -708,6 +765,18 @@ def get_dataset_records(
             query = query.filter(DatasetRecord.dataset_id == dataset_id)
         if language_id:
             query = query.filter(DatasetRecord.language_id == language_id)
+
+        # ROLE-BASED ACCESS CONTROL:
+        # Administrator can view all records across all contributors, or filter by specific contributor.
+        # Standard Contributors only see their own uploaded data.
+        is_admin = current_user and current_user.get("role") == "Administrator"
+        if is_admin:
+            if contributor_id:
+                query = query.filter(DatasetRecord.user_id == contributor_id)
+        else:
+            effective_user_id = (current_user.get("sub") if current_user else None) or contributor_id
+            if effective_user_id:
+                query = query.filter(DatasetRecord.user_id == effective_user_id)
 
         records = query.order_by(DatasetRecord.created_at.desc()).all()
         if records:
@@ -720,6 +789,8 @@ def get_dataset_records(
                     language_id=r.language_id,
                     language_name=r.language_name or (r.language.name if r.language else "English"),
                     duration=r.duration,
+                    user_id=r.user_id,
+                    uploaded_by=r.uploaded_by,
                     created_at=r.created_at.isoformat() if r.created_at else "",
                 )
                 for r in records
@@ -727,7 +798,7 @@ def get_dataset_records(
     except Exception as e:
         logger.warning(f"Database error in get_dataset_records: {e}. Falling back to default records.")
 
-    # Return default records as graceful fallback
+    # Fallback records
     default_recs = [
         DatasetRecordResponse(
             id="AUD-001",
@@ -737,6 +808,8 @@ def get_dataset_records(
             language_id=1,
             language_name="English",
             duration=4.0,
+            user_id="usr-admin-01",
+            uploaded_by="System Administrator",
             created_at="2026-10-01T09:15:00Z",
         ),
         DatasetRecordResponse(
@@ -747,6 +820,8 @@ def get_dataset_records(
             language_id=2,
             language_name="Tamil",
             duration=4.5,
+            user_id="usr-admin-01",
+            uploaded_by="System Administrator",
             created_at="2026-10-01T09:30:00Z",
         ),
         DatasetRecordResponse(
@@ -757,6 +832,8 @@ def get_dataset_records(
             language_id=3,
             language_name="Hindi",
             duration=4.2,
+            user_id="usr-admin-01",
+            uploaded_by="System Administrator",
             created_at="2026-10-01T09:45:00Z",
         ),
     ]
@@ -764,6 +841,8 @@ def get_dataset_records(
         default_recs = [r for r in default_recs if r.dataset_id == dataset_id]
     if language_id:
         default_recs = [r for r in default_recs if r.language_id == language_id]
+    if current_user and current_user.get("role") != "Administrator":
+        default_recs = [r for r in default_recs if r.user_id == current_user.get("sub")]
     return default_recs
 
 
@@ -776,13 +855,15 @@ def get_dataset_records(
 def export_dataset_zip(
     dataset_id: Optional[str] = None,
     language_id: Optional[int] = None,
+    contributor_id: Optional[str] = None,
+    current_user: Optional[dict] = Depends(get_current_user_optional),
     db: Session = Depends(get_db),
 ):
     """
     Exports dataset records and all associated individual audio files bundled into a single ZIP archive.
     Inside the ZIP:
       - audio/[ID].wav : Each individual audio file saved separately
-      - metadata.json  : Complete structured metadata and transcripts
+      - metadata.json  : Complete structured metadata, transcripts, and contributor attribution
       - metadata.csv   : Standard tabular dataset format
       - README.txt     : Archive documentation
     """
@@ -792,11 +873,21 @@ def export_dataset_zip(
     if language_id:
         query = query.filter(DatasetRecord.language_id == language_id)
 
+    # Permission check: Non-administrators only export their own records
+    is_admin = current_user and current_user.get("role") == "Administrator"
+    if is_admin:
+        if contributor_id:
+            query = query.filter(DatasetRecord.user_id == contributor_id)
+    else:
+        effective_user_id = (current_user.get("sub") if current_user else None) or contributor_id
+        if effective_user_id:
+            query = query.filter(DatasetRecord.user_id == effective_user_id)
+
     records = query.order_by(DatasetRecord.created_at.desc()).all()
 
     zip_buffer = io.BytesIO()
     with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as zip_file:
-        csv_rows = [["id", "audio_file", "text", "language_id", "language_name", "duration", "created_at"]]
+        csv_rows = [["id", "audio_file", "text", "language_id", "language_name", "duration", "contributor", "created_at"]]
         json_records = []
         total_duration = 0.0
 
@@ -865,6 +956,7 @@ def export_dataset_zip(
                 "language_id": r.language_id,
                 "language_name": lang_name,
                 "duration": round(dur, 2),
+                "contributor": r.uploaded_by or "Contributor",
                 "created_at": created_str,
             })
 
@@ -875,6 +967,7 @@ def export_dataset_zip(
                 str(r.language_id or ""),
                 lang_name,
                 str(round(dur, 2)),
+                r.uploaded_by or "Contributor",
                 created_str,
             ])
 
@@ -974,6 +1067,7 @@ def get_record_by_id(record_id: str, db: Session = Depends(get_db)):
 def save_record_to_dataset(
     payload: DatasetRecordCreate,
     dataset_id: Optional[str] = "DS-001",
+    current_user: Optional[dict] = Depends(get_current_user_optional),
     db: Session = Depends(get_db),
 ):
     target_ds_id = dataset_id or "DS-001"
@@ -995,6 +1089,15 @@ def save_record_to_dataset(
     lang_obj = db.query(Language).filter(Language.id == lang_id_num).first()
     lang_name = payload.language_name or (lang_obj.name if lang_obj else "English")
 
+    # Author tracking for isolation and audit
+    author_id = payload.user_id
+    author_name = payload.uploaded_by
+    if current_user:
+        author_id = current_user.get("sub") or author_id
+        author_name = current_user.get("name") or current_user.get("username") or author_name
+    if not author_name:
+        author_name = "Contributor"
+
     new_record = DatasetRecord(
         id=new_record_id,
         dataset_id=target_ds_id,
@@ -1003,6 +1106,8 @@ def save_record_to_dataset(
         language_id=lang_id_num,
         language_name=lang_name,
         duration=payload.duration or 4.0,
+        user_id=author_id,
+        uploaded_by=author_name,
     )
     db.add(new_record)
     
@@ -1023,9 +1128,45 @@ def save_record_to_dataset(
             language_id=new_record.language_id,
             language_name=new_record.language_name,
             duration=new_record.duration,
+            user_id=new_record.user_id,
+            uploaded_by=new_record.uploaded_by,
             created_at=new_record.created_at.isoformat() if new_record.created_at else "",
         ),
     }
+
+# ---------------------------------------------------------------------------
+# Administrator Contributor Directory & Oversight
+# ---------------------------------------------------------------------------
+@app.get("/api/admin/contributors", response_model=List[ContributorStats])
+@app.get("/api/admin/users", response_model=List[ContributorStats])
+def get_admin_contributors(
+    current_user: Optional[dict] = Depends(get_current_user_optional),
+    db: Session = Depends(get_db),
+):
+    """
+    Returns list of all contributors with their aggregate upload stats.
+    Accessible only to authenticated Administrators.
+    """
+    if current_user and current_user.get("role") != "Administrator":
+        raise HTTPException(status_code=403, detail="Administrator permissions required.")
+
+    users = db.query(User).order_by(User.created_at.desc()).all()
+    results = []
+    for u in users:
+        recs = db.query(DatasetRecord).filter(DatasetRecord.user_id == u.id).all()
+        total_dur = sum(r.duration or 0.0 for r in recs)
+        results.append(
+            ContributorStats(
+                id=u.id,
+                username=u.username,
+                name=u.name,
+                role=u.role,
+                upload_count=len(recs),
+                total_duration=round(total_dur, 2),
+                created_at=u.created_at.isoformat() if u.created_at else "",
+            )
+        )
+    return results
 
 @app.put("/api/datasets/{dataset_id}", response_model=DatasetResponse)
 @app.patch("/api/datasets/{dataset_id}", response_model=DatasetResponse)

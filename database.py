@@ -135,6 +135,16 @@ def init_db():
                 import models  # noqa
 
         Base.metadata.create_all(bind=eng)
+        
+        # Ensure new columns exist on existing database tables
+        try:
+            with eng.connect() as conn:
+                conn.execute(text("ALTER TABLE dataset_records ADD COLUMN IF NOT EXISTS user_id VARCHAR(64);"))
+                conn.execute(text("ALTER TABLE dataset_records ADD COLUMN IF NOT EXISTS uploaded_by VARCHAR(128);"))
+                conn.commit()
+        except Exception as col_err:
+            logger.info(f"Columns check or already present: {col_err}")
+
         logger.info("✅ Database tables verified and created successfully.")
 
         # Seed default initial data if tables are empty

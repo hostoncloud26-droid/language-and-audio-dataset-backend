@@ -58,6 +58,8 @@ class DatasetRecordCreate(BaseModel):
     language_id: Union[int, str]
     language_name: Optional[str] = None
     duration: Optional[float] = 0.0
+    user_id: Optional[str] = None
+    uploaded_by: Optional[str] = None
 
 class DatasetRecordUpdate(BaseModel):
     text: Optional[str] = None
@@ -74,9 +76,20 @@ class DatasetRecordResponse(BaseModel):
     language_name: Optional[str] = None
     duration: Optional[float] = 0.0
     created_at: str
+    user_id: Optional[str] = None
+    uploaded_by: Optional[str] = None
 
     class Config:
         from_attributes = True
+
+class ContributorStats(BaseModel):
+    id: str
+    username: str
+    name: str
+    role: str
+    upload_count: int = 0
+    total_duration: float = 0.0
+    created_at: Optional[str] = ""
 
 # Dataset schemas
 class DatasetCreate(BaseModel):
